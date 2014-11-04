@@ -233,7 +233,6 @@ class TelnetBase:
     def writeln_line(self, line):
         self.telnet.write(line + "\n")
 
-
     def cmd_usr1(self):
         self.signal_pending = True
         if self.conf.sig_usr1_cmd:
@@ -260,7 +259,7 @@ class TelnetBase:
     def send_pending_cmd(self):
         if self.cmd_to_send:
             pipe_pos = self.cmd_to_send.find("|")
-            if pipe_pos > 0:
+            if pipe_pos >= 0:
                 cmd = self.cmd_to_send[:pipe_pos]
                 self.cmd_to_send = self.cmd_to_send[pipe_pos + 1:]
             else:
