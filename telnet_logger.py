@@ -148,14 +148,32 @@ class LineListener:
     this is abstract class
     """
 
-    def on_line_received(self, line, telnet_base, source=LineSource.REMOTE):
+    def on_line_received(self, line, telnet_base, source=LineSource.REMOTE, level=logging.INFO):
         pass
+
+
+class LineFilter:
+    """
+    this is abstract class
+    """
+
+    def filter_line(self, line, telnet_base, source=LineSource.REMOTE):
+        """
+
+        :param line:
+        :param telnet_base:
+        :param source:
+        :return: False if line should be dropped, True otherwise
+        """
+        return True
 
 
 class TelnetBase:
     def __init__(self, conf, listener=DEFAULT_LISTENER, default_timeout=None):
         self.next_listener_id = 0
+        self.next_filter_id = 0
         self.listeners = {}
+        self.filters = {}
         if listener == DEFAULT_LISTENER:
             listener = ConsoleListener()
         if listener:
@@ -187,6 +205,18 @@ class TelnetBase:
         self.next_listener_id += 1
         self.listeners[listener_id] = listener
         return listener_id
+
+    def add_filter(self, filter):
+        filter_id = self.next_filter_id
+        self.next_filter_id += 1
+        self.filters[filter_id] = filter
+        return filter_id
+
+    def remove_listener(self, listener_id):
+        del self.listeners[listener_id]
+
+    def remove_filter(self, filter_id):
+        del self.filters[filter_id]
 
     def expect_line(self, line_expected, timeout=DEFAULT_TIMEOUT):
         if timeout == DEFAULT_TIMEOUT:
@@ -224,7 +254,7 @@ class TelnetBase:
 
     def watchdog_cmd(self):
         if self.conf.wd_cmd:
-            self.info("sending watchdog command")
+            self.debug("sending watchdog command")
             self.writeln_line(self.conf.wd_cmd)
 
     def send_pending_cmd(self):
@@ -243,7 +273,13 @@ class TelnetBase:
 
     def send_to_listeners(self, line, source=LineSource.REMOTE, level=logging.INFO):
         for listener in self.listeners.values():
-            listener.on_line_received(line, self, source)
+            listener.on_line_received(line, self, source, level)
+
+    def process_filters(self, line, source=LineSource.REMOTE):
+        for f in self.filters.values():
+            if not f.filter_line(line, self, source):
+                return False
+        return True
 
     def debug(self, msg, *args, **kwargs):
         self.send_to_listeners(msg.format(*args, **kwargs), source=LineSource.MESSAGE, level=logging.DEBUG)
@@ -274,7 +310,8 @@ class TelnetBase:
                 self.buffer = self.buffer[nl_index + 1:]
                 # print "[", text, "] [",line,"] [", self.buffer, "]"
                 if line:
-                    self.send_to_listeners(line)
+                    if self.process_filters(line, source=LineSource.REMOTE):
+                        self.send_to_listeners(line)
 
 
     def process_remote_data(self, local_fd=None, timeout=None):
@@ -319,18 +356,18 @@ class LogConsoleListener(LineListener):
 
     def on_line_received(self, line, telnet_base, source=LineSource.REMOTE, level=logging.INFO):
         time_str = time.strftime("%c")
-        print("{}: {}".format(time_str, line))
+        if level >= logging.INFO:
+            print("{}: {}".format(time_str, line))
+
 
 class InitialCommandErrorPhraseListener(LineListener):
-
     def __init__(self, initial_cmd_error_phrase):
         self.patt = re.compile(initial_cmd_error_phrase)
 
-    def on_line_received(self, line, telnet_base, source=LineSource.REMOTE):
-        if source==LineSource.REMOTE and self.patt.match(line):
+    def on_line_received(self, line, telnet_base, source=LineSource.REMOTE, level=logging.INFO):
+        if source == LineSource.REMOTE and self.patt.match(line):
             telnet_base.error("initial command failed. Will be resent")
             telnet_base.initial_cmd()
-
 
 
 class ConsoleListener(LineListener):
@@ -350,17 +387,18 @@ class SimpleFileListener(LineListener):
             f.write(line)
 
 
-class WatchdogListener(LineListener):
+class WatchdogListener(LineFilter):
     def __init__(self, wd_response_phrase, wd_timeout):
         self.wd_timeout = wd_timeout
         self.wd_response_phrase = wd_response_phrase
         self.wd_response_last_seen = None
         self.patt = re.compile(wd_response_phrase)
 
-    def on_line_received(self, line, telnet_base, source=LineSource.REMOTE):
-        if source == LineSource.REMOTE:
-            if self.patt.match(line):
-                self.wd_response_last_seen = time.time()
+    def filter_line(self, line, telnet_base, source=LineSource.REMOTE):
+        if source == LineSource.REMOTE and self.patt.match(line):
+            self.reset()
+            return False
+        return True
 
     def is_expired(self):
         if not self.wd_response_last_seen:
@@ -429,7 +467,7 @@ class TelnetLogger(TelnetBase):
         self.wd = None
         if self.conf.wd_response:
             self.wd = WatchdogListener(wd_response_phrase=self.conf.wd_response, wd_timeout=self.conf.wd_max_wait)
-            self.add_listener(self.wd)
+            self.add_filter(self.wd)
         if self.conf.initial_cmd_error_phrase:
             self.add_listener(InitialCommandErrorPhraseListener(self.conf.initial_cmd_error_phrase))
 
