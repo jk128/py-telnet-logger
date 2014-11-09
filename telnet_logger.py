@@ -65,28 +65,15 @@ class Config(BaseConfig):
             self.__dict__[prop_name] = value
 
     def load_cfg_params(self, section):
-        self.load_cfg_param("host", section=section)
-        self.load_cfg_param_int("port", section=section)
-        self.load_cfg_param("user", section=section)
-        self.load_cfg_param("password", section=section)
-        self.load_cfg_param("filename", section=section)
-        self.load_cfg_param_int("max_logs", section=section)
-        self.load_cfg_param_int("max_log_size", section=section)
-        self.load_cfg_param("login_prompt", section=section)
-        self.load_cfg_param("password_prompt", section=section)
-        self.load_cfg_param("wd_cmd", section=section)
-        self.load_cfg_param_int("wd_start_after_delay", section=section)
-        self.load_cfg_param("wd_start_after_phrase", section=section)
-        self.load_cfg_param_int("wd_delay", section=section)
-        self.load_cfg_param_int("wd_max_wait", section=section)
-        self.load_cfg_param("wd_response", section=section)
-        self.load_cfg_param("logged_phrase", section=section)
-        self.load_cfg_param_int("timeout", section=section)
-        self.load_cfg_param("sig_usr1_cmd", section=section)
-        self.load_cfg_param("sig_usr2_cmd", section=section)
-        self.load_cfg_param_int("reconnect_delay", section=section)
-        self.load_cfg_param("initial_cmd", section=section)
-        self.load_cfg_param("initial_cmd_error_phrase", section=section)
+        str_params = ["host", "user", "password", "filename", "login_prompt", "password_prompt", "wd_cmd",
+                      "wd_start_after_phrase", "wd_response", "logged_phrase",
+                      "sig_usr1_cmd", "sig_usr2_cmd", "initial_cmd", "initial_cmd_error_phrase"]
+        for param in str_params:
+            self.load_cfg_param(param, section=section)
+        int_params = ["port", "max_logs", "max_log_size", "wd_start_after_delay", "wd_delay", "wd_max_wait", "timeout",
+                      "reconnect_delay"]
+        for param in str_params:
+            self.load_cfg_param_int(param, section=section)
 
     def load_from_file(self, file_name):
         if self.cfg.read(file_name) == [file_name]:
